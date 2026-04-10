@@ -1,40 +1,22 @@
 const std = @import("std");
 const Target = std.Target;
-const CrossTarget = std.zig.CrossTarget;
+const TargetQuery = Target.Query;
 
 fn addTests(
     b: *std.Build,
     test_step: *std.Build.Step,
     dir_path: []const u8,
 ) !void {
-    // Get absolute path
-    const abs_path = try std.fs.cwd().realpathAlloc(b.allocator, dir_path);
-    defer b.allocator.free(abs_path);
-
-    var dir = try std.fs.openDirAbsolute(abs_path, .{ .iterate = true });
-    defer dir.close();
-
-    var walker = try dir.walk(b.allocator);
-    defer walker.deinit();
-
-    // Iterate through all files in directory and subdirectories
-    while (try walker.next()) |entry| {
-        if (entry.kind != .file) continue;
-
-        // Check if file ends with _test.zig
-        if (std.mem.endsWith(u8, entry.path, "_test.zig")) {
-            const test_path = try std.fs.path.join(b.allocator, &.{ dir_path, entry.path });
-            defer b.allocator.free(test_path);
-
-            const tests = b.addTest(.{
-                .root_source_file = b.path(test_path),
-                .target = b.host,
-                .optimize = .Debug,
-            });
-            const run_tests = b.addRunArtifact(tests);
-            test_step.dependOn(&run_tests.step);
-        }
-    }
+    const test_mod = b.addModule("test", .{
+        .root_source_file = b.path(dir_path),
+        .target = b.standardTargetOptions(.{}),
+        .optimize = .Debug,
+    });
+    const tests = b.addTest(.{
+        .root_module = test_mod,
+    });
+    const run_tests = b.addRunArtifact(tests);
+    test_step.dependOn(&run_tests.step);
 }
 
 // Although this function looks imperative, note that its job is to
@@ -45,7 +27,7 @@ pub fn build(b: *std.Build) void {
     // Currently the target is hardcoded to be
     // on x86, but with time this will be compiled for
     // various architectures.
-    const targetQuery = CrossTarget{
+    const targetQuery = TargetQuery{
         .cpu_arch = Target.Cpu.Arch.x86,
         .os_tag = Target.Os.Tag.freestanding,
     };
@@ -58,14 +40,17 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     // Setting our kernel:
-    const kernel = b.addExecutable(.{
-        .name = "zig-os",
+    const kernel_mod = b.addModule("kernel", .{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    kernel.setLinkerScriptPath(b.path("src/linker.ld"));
+    const kernel = b.addExecutable(.{
+        .name = "zig-os",
+        .root_module = kernel_mod,
+    });
+    kernel.linker_script = b.path("src/linker.ld");
 
     // Disable PIE - Position Independent Executable
     // Position Independent Executable (PIE) is disabled because

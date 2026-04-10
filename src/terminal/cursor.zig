@@ -1,3 +1,6 @@
+const x86 = @import("../drivers/x86/x86.zig");
+const vga = @import("../drivers/vga/buffer.zig");
+
 pub const Cursor = struct {
     row: usize,
     column: usize,
@@ -10,11 +13,9 @@ pub const Cursor = struct {
     pub fn init(width: usize, height: usize) Self {
         return Self{
             .row = 0,
-            .max_height = height,
-
             .column = 0,
             .max_width = width,
-
+            .max_height = height,
             .needs_scroll = false,
         };
     }
@@ -28,6 +29,7 @@ pub const Cursor = struct {
         self.row = r;
         self.column = col;
         self.needs_scroll = false;
+        self.updateHardwareCursor();
     }
 
     pub fn advance(self: *Self) void {
@@ -40,11 +42,13 @@ pub const Cursor = struct {
                 self.needs_scroll = true;
             }
         }
+        self.updateHardwareCursor();
     }
 
     pub fn backOne(self: *Self) void {
         if (self.column > 0) {
             self.column = self.column - 1;
+            self.updateHardwareCursor();
             return;
         }
         if (self.row == 0) {
@@ -54,6 +58,7 @@ pub const Cursor = struct {
         self.row = self.row - 1;
         self.column = self.max_width - 1;
         self.needs_scroll = false;
+        self.updateHardwareCursor();
     }
 
     pub fn newLine(self: *Self) void {
@@ -63,17 +68,27 @@ pub const Cursor = struct {
             self.row -= 1;
             self.needs_scroll = true;
         }
+        self.updateHardwareCursor();
     }
 
     pub fn reset(self: *Self) void {
         self.column = 0;
         self.row = 0;
         self.needs_scroll = false;
+        self.updateHardwareCursor();
     }
 
     pub fn checkScroll(self: *Self) bool {
         const needs = self.needs_scroll;
         self.needs_scroll = false;
         return needs;
+    }
+
+    pub fn updateHardwareCursor(self: *const Self) void {
+        const offset = self.row * vga.VGABuffer.WIDTH + self.column;
+        x86.outb(0x3D4, 0x0E);
+        x86.outb(0x3D5, @as(u8, @truncate(offset >> 8)));
+        x86.outb(0x3D4, 0x0F);
+        x86.outb(0x3D5, @as(u8, @truncate(offset)));
     }
 };

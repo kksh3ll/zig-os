@@ -1,8 +1,2 @@
-.zig-cache/**/*
-zig-out/**/*
-
-zig-os
-zig-os.o
-
-*.log
-**/*.log
+.zig-cache/
+zig-out/

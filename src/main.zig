@@ -33,7 +33,7 @@ export fn kernel_main() noreturn {
     }
 }
 
-export fn _start() callconv(.Naked) noreturn {
+export fn _start() callconv(.naked) noreturn {
     // Set up the stack pointer
     asm volatile (
         \\  mov $stack_bytes, %%esp
