@@ -25,10 +25,10 @@ fn addTests(
 pub fn build(b: *std.Build) void {
 
     // Currently the target is hardcoded to be
-    // on x86, but with time this will be compiled for
+    // on x86_64 (Long Mode), but with time this will be compiled for
     // various architectures.
     const targetQuery = TargetQuery{
-        .cpu_arch = Target.Cpu.Arch.x86,
+        .cpu_arch = Target.Cpu.Arch.x86_64,
         .os_tag = Target.Os.Tag.freestanding,
     };
 
@@ -87,6 +87,8 @@ pub fn build(b: *std.Build) void {
         "zig-out/bin/zig-os",
         "-serial",
         "null",
+        "-cpu",
+        "qemu64",
     });
 
     // By making the run step depend on the install step, it will be run from the
