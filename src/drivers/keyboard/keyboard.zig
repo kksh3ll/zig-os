@@ -75,8 +75,8 @@ pub const Keyboard = struct {
     }
 
     pub fn readScancode() u8 {
-        // Wait for keyboard buffer to be ready
-        while ((x86.inb(STATUS_PORT) & 1) == 0) {}
+        // Wait for keyboard buffer to be ready (output buffer full)
+        while ((x86.inb(STATUS_PORT) & 0x01) == 0) {}
         return x86.inb(DATA_PORT);
     }
 };

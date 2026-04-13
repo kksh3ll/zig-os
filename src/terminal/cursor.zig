@@ -86,9 +86,13 @@ pub const Cursor = struct {
 
     pub fn updateHardwareCursor(self: *const Self) void {
         const offset = self.row * vga.VGABuffer.WIDTH + self.column;
-        x86.outb(0x3D4, 0x0E);
-        x86.outb(0x3D5, @as(u8, @truncate(offset >> 8)));
-        x86.outb(0x3D4, 0x0F);
-        x86.outb(0x3D5, @as(u8, @truncate(offset)));
+        // VGA cursor port addresses
+        const VGA_CTRL_PORT = 0x3D4;
+        const VGA_DATA_PORT = 0x3D5;
+        
+        x86.outb(VGA_CTRL_PORT, 0x0E);
+        x86.outb(VGA_DATA_PORT, @as(u8, @truncate(offset >> 8)));
+        x86.outb(VGA_CTRL_PORT, 0x0F);
+        x86.outb(VGA_DATA_PORT, @as(u8, @truncate(offset)));
     }
 };
