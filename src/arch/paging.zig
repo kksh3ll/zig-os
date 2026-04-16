@@ -51,10 +51,14 @@ pub fn initialize() void {
 fn loadCR3() void {
     const pml4t_addr: u64 = @intFromPtr(&pml4_table);
     asm volatile (
-        \\ mov %0, %%cr3
+    // 1. Intel语法：目标是 cr3，源是输入参数
+    // 2. 去掉了寄存器前面的 %%
+    // 3. %0 改成了 %[addr]
+        \\ mov cr3, %[addr]
         :
-        : "r"(pml4t_addr)
-        : "memory"
+        // 4. 必须使用 [名字] "约束" (值) 的格式
+        : [addr] "r" (pml4t_addr),
+        : .{ .memory = true }
     );
 }
 
@@ -62,123 +66,104 @@ pub fn enablePaging() void {
     // Read CR0
     var cr0: u64 = undefined;
     asm volatile (
-        \\ mov %%cr0, %0
-        : "=r"(cr0)
-        :
-        : "memory"
+        \\ mov %[out], cr0
+        : [out] "=r" (cr0),
     );
 
-    // Set PG (bit 31) and WP (bit 16) bits
-    cr0 |= (1 << 31); // PG - Paging
-    cr0 |= (1 << 16); // WP - Write Protect
+    cr0 |= (1 << 31); // PG
+    cr0 |= (1 << 16); // WP
 
-    // Write back to CR0
     asm volatile (
-        \\ mov %0, %%cr0
+        \\ mov cr0, %[in]
         :
-        : "r"(cr0)
-        : "memory"
+        : [in] "r" (cr0),
+        : .{ .memory = true }
     );
 
     // Read CR4
     var cr4: u64 = undefined;
     asm volatile (
-        \\ mov %%cr4, %0
-        : "=r"(cr4)
-        :
-        : "memory"
+        \\ mov %[out], cr4
+        : [out] "=r" (cr4),
     );
 
-    // Set PAE (bit 5), PSE (bit 4), and SMEP/SMAP if desired
-    cr4 |= (1 << 5); // PAE - Physical Address Extension
-    cr4 |= (1 << 4); // PSE - Page Size Extension
+    cr4 |= (1 << 5); // PAE
+    cr4 |= (1 << 4); // PSE
 
-    // Write back to CR4
     asm volatile (
-        \\ mov %0, %%cr4
+        \\ mov cr4, %[in]
         :
-        : "r"(cr4)
-        : "memory"
+        : [in] "r" (cr4),
+        : .{ .memory = true }
     );
 
-    // Enable long mode via EFER MSR (0xC0000080)
-    // Read EFER
-    var efer: u64 = undefined;
+    // --- EFER MSR 读写 ---
+    var efer_low: u32 = undefined;
+    var efer_high: u32 = undefined;
     asm volatile (
-        \\ mov $0xC0000080, %%ecx
+        \\ mov ecx, 0xC0000080
         \\ rdmsr
-        \\ shl $32, %%rdx
-        \\ or %%rax, %%rdx
-        \\ mov %%rdx, %0
-        : "=r"(efer)
+        : [low] "={eax}" (efer_low),
+          [high] "={edx}" (efer_high),
         :
-        : "rax", "rcx", "rdx", "memory"
+        : .{ .ecx = true }
     );
 
-    // Set LME (bit 8) and NXE (bit 11)
-    efer |= (1 << 8);  // LME - Long Mode Enable
-    efer |= (1 << 11); // NXE - No-Execute Enable
+    var efer: u64 = (@as(u64, efer_high) << 32) | efer_low;
+    efer |= (1 << 8); // LME
+    efer |= (1 << 11); // NXE
 
-    // Write back to EFER
+    const efer_out_low: u32 = @truncate(efer);
+    const efer_out_high: u32 = @truncate(efer >> 32);
+
     asm volatile (
-        \\ mov %0, %%rax
-        \\ shr $32, %%rax
-        \\ mov %%rax, %%rdx
-        \\ mov %0, %%rax
-        \\ and $0xFFFFFFFF, %%rax
-        \\ mov $0xC0000080, %%ecx
+        \\ mov ecx, 0xC0000080
         \\ wrmsr
         :
-        : "r"(efer)
-        : "rax", "rcx", "rdx", "memory"
+        : [low] "{eax}" (efer_out_low),
+          [high] "{edx}" (efer_out_high),
+        : .{ .ecx = true }
     );
 
-    // Set MCE (bit 6), OSFXSR (bit 9), OSXMMEXCPT (bit 10) in CR4
+    // Read CR4 again
     var cr4_final: u64 = undefined;
     asm volatile (
-        \\ mov %%cr4, %0
-        : "=r"(cr4_final)
-        :
-        : "memory"
-    );
-    cr4_final |= (1 << 6);  // MCE - Machine Check Exception
-    cr4_final |= (1 << 9);  // OSFXSR - FXSAVE/FXRSTOR
-    cr4_final |= (1 << 10); // OSXMMEXCPT - Unmasked SSE Exceptions
-
-    asm volatile (
-        \\ mov %0, %%cr4
-        :
-        : "r"(cr4_final)
-        : "memory"
+        \\ mov %[out], cr4
+        : [out] "=r" (cr4_final),
     );
 
-    // Finally, set LME bit in EFER and enable paging
-    // This is done by setting bit 31 (PG) in CR0 which we already did above
-    // But we need to ensure LME was set before enabling PG
-    
-    // Set LME in EFER properly
-    var efer_low: u32 = 0;
-    var efer_high: u32 = 0;
+    cr4_final |= (1 << 6); // MCE
+    cr4_final |= (1 << 9); // OSFXSR
+    cr4_final |= (1 << 10); // OSXMMEXCPT
+
     asm volatile (
-        \\ mov $0xC0000080, %%ecx
+        \\ mov cr4, %[in]
+        :
+        : [in] "r" (cr4_final),
+        : .{ .memory = true }
+    );
+
+    // --- 最后再次设置 EFER.LME ---
+    var efer_final_low: u32 = undefined;
+    var efer_final_high: u32 = undefined;
+    asm volatile (
+        \\ mov ecx, 0xC0000080
         \\ rdmsr
-        \\ mov %%eax, %0
-        \\ mov %%edx, %1
-        : "=r"(efer_low), "=r"(efer_high)
+        : [low] "={eax}" (efer_final_low),
+          [high] "={edx}" (efer_final_high),
         :
-        : "rax", "rcx", "rdx", "memory"
+        : .{ .ecx = true }
     );
-    
-    efer_low |= (1 << 8); // LME
-    
+
+    efer_final_low |= (1 << 8); // LME
+
     asm volatile (
-        \\ mov %0, %%eax
-        \\ mov %1, %%edx
-        \\ mov $0xC0000080, %%ecx
+        \\ mov ecx, 0xC0000080
         \\ wrmsr
         :
-        : "r"(efer_low), "r"(efer_high)
-        : "rax", "rcx", "rdx", "memory"
+        : [low] "{eax}" (efer_final_low),
+          [high] "{edx}" (efer_final_high),
+        : .{ .ecx = true }
     );
 }
 
