@@ -51,120 +51,103 @@ pub fn initialize() void {
 fn loadCR3() void {
     const pml4t_addr: u64 = @intFromPtr(&pml4_table);
     asm volatile (
-    // 1. Intel语法：目标是 cr3，源是输入参数
-    // 2. 去掉了寄存器前面的 %%
-    // 3. %0 改成了 %[addr]
-        \\ mov cr3, %[addr]
+        \\ mov %[addr], %%cr3
         :
-        // 4. 必须使用 [名字] "约束" (值) 的格式
         : [addr] "r" (pml4t_addr),
-        : .{ .memory = true }
-    );
+        : .{ .memory = true });
 }
 
 pub fn enablePaging() void {
-    // Read CR0
     var cr0: u64 = undefined;
     asm volatile (
-        \\ mov %[out], cr0
+        \\ mov %%cr0, %[out]
         : [out] "=r" (cr0),
     );
 
-    cr0 |= (1 << 31); // PG
-    cr0 |= (1 << 16); // WP
+    cr0 |= (1 << 31);
+    cr0 |= (1 << 16);
 
     asm volatile (
-        \\ mov cr0, %[in]
+        \\ mov %[in], %%cr0
         :
         : [in] "r" (cr0),
-        : .{ .memory = true }
-    );
+        : .{ .memory = true });
 
-    // Read CR4
     var cr4: u64 = undefined;
     asm volatile (
-        \\ mov %[out], cr4
+        \\ mov %%cr4, %[out]
         : [out] "=r" (cr4),
     );
 
-    cr4 |= (1 << 5); // PAE
-    cr4 |= (1 << 4); // PSE
+    cr4 |= (1 << 5);
+    cr4 |= (1 << 4);
 
     asm volatile (
-        \\ mov cr4, %[in]
+        \\ mov %[in], %%cr4
         :
         : [in] "r" (cr4),
-        : .{ .memory = true }
-    );
+        : .{ .memory = true });
 
-    // --- EFER MSR 读写 ---
     var efer_low: u32 = undefined;
     var efer_high: u32 = undefined;
     asm volatile (
-        \\ mov ecx, 0xC0000080
+        \\ mov $0xC0000080, %%ecx
         \\ rdmsr
         : [low] "={eax}" (efer_low),
           [high] "={edx}" (efer_high),
         :
-        : .{ .ecx = true }
-    );
+        : .{ .ecx = true });
 
     var efer: u64 = (@as(u64, efer_high) << 32) | efer_low;
-    efer |= (1 << 8); // LME
-    efer |= (1 << 11); // NXE
+    efer |= (1 << 8);
+    efer |= (1 << 11);
 
     const efer_out_low: u32 = @truncate(efer);
     const efer_out_high: u32 = @truncate(efer >> 32);
 
     asm volatile (
-        \\ mov ecx, 0xC0000080
+        \\ mov $0xC0000080, %%ecx
         \\ wrmsr
         :
         : [low] "{eax}" (efer_out_low),
           [high] "{edx}" (efer_out_high),
-        : .{ .ecx = true }
-    );
+        : .{ .ecx = true });
 
-    // Read CR4 again
     var cr4_final: u64 = undefined;
     asm volatile (
-        \\ mov %[out], cr4
+        \\ mov %%cr4, %[out]
         : [out] "=r" (cr4_final),
     );
 
-    cr4_final |= (1 << 6); // MCE
-    cr4_final |= (1 << 9); // OSFXSR
-    cr4_final |= (1 << 10); // OSXMMEXCPT
+    cr4_final |= (1 << 6);
+    cr4_final |= (1 << 9);
+    cr4_final |= (1 << 10);
 
     asm volatile (
-        \\ mov cr4, %[in]
+        \\ mov %[in], %%cr4
         :
         : [in] "r" (cr4_final),
-        : .{ .memory = true }
-    );
+        : .{ .memory = true });
 
-    // --- 最后再次设置 EFER.LME ---
     var efer_final_low: u32 = undefined;
     var efer_final_high: u32 = undefined;
     asm volatile (
-        \\ mov ecx, 0xC0000080
+        \\ mov $0xC0000080, %%ecx
         \\ rdmsr
         : [low] "={eax}" (efer_final_low),
           [high] "={edx}" (efer_final_high),
         :
-        : .{ .ecx = true }
-    );
+        : .{ .ecx = true });
 
-    efer_final_low |= (1 << 8); // LME
+    efer_final_low |= (1 << 8);
 
     asm volatile (
-        \\ mov ecx, 0xC0000080
+        \\ mov $0xC0000080, %%ecx
         \\ wrmsr
         :
         : [low] "{eax}" (efer_final_low),
           [high] "{edx}" (efer_final_high),
-        : .{ .ecx = true }
-    );
+        : .{ .ecx = true });
 }
 
 pub fn getPhysicalAddress(virtual_addr: usize) ?usize {

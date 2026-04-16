@@ -45,6 +45,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    kernel_mod.addAssemblyFile(b.path("src/asm.S"));
 
     const kernel = b.addExecutable(.{
         .name = "zig-os",

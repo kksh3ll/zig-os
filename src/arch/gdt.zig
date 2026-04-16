@@ -109,13 +109,10 @@ pub fn initialize() void {
     loadGDT();
 }
 
+extern fn asm_lgdt(ptr: *const GDTPtr) callconv(.c) void;
+
 fn loadGDT() void {
-    // 直接在汇编中引用全局变量符号名
-    // 注意：Zig 在 x86 上默认使用 AT&T 语法
-    // %%rip 中的两个百分号是因为 Zig 简单汇编中 % 用于转义寄存器，%% 表示字面量 %
-    asm volatile (
-        \\ lgdt gdt_ptr(%%rip)
-    );
+    asm_lgdt(&gdt_ptr);
 }
 
 pub fn getKernelCodeSelector() u16 {
